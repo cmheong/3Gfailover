@@ -1,0 +1,65 @@
+#!/bin/bash
+sikamat=$(traceroute -m 3 8.8.8.8 | grep -w 'xx\.xx\.xx\.xx')
+echo "result is "  $sikamat
+if  [[ "$sikamat" == "" ]]
+then
+  date
+  echo "Streamyx failed traceroute ..."
+  ping -c 4 -I eth0 8.8.4.4
+  if [ $? == 0 ]
+  then
+    date
+    echo "traceroute failed but ping passed - ADSL is back but LAN switch is off"
+    previous_result=$(mosquitto_sub -h aspireF15.local -C 1 -t 'failover/messages')
+    if [ "$previous_result" == "ADSL failed" ]
+    then
+      notice=$(mosquitto_pub -h aspireF15.local -r -t 'failover/messages' -m 'ADSL restored')
+      date
+      echo "Streamyx is back; turning on LAN switch"
+      mosquitto_pub -h aspireF15.local -t 'lightning/messages' -m 'Streamyx is back, turning on LAN switch'
+      python3 /home/heong/failover/Lanon.py
+      ADSL_failed=0
+      sleep 15
+    fi
+  else
+    echo "Streamyx unavailable"
+    previous_result=$(mosquitto_sub -h aspireF15.local -C 1 -t 'failover/messages')
+    if [ "$previous_result" == "ADSL restored" ]
+    then
+      notice=$(mosquitto_pub -h aspireF15.local -r -t 'failover/messages' -m 'ADSL failed')
+      date
+      echo "Streamyx out; switching off LAN switch to provoke Huawei failover"
+      mosquitto_pub -h aspireF15.local -t 'lightning/messages' -m 'Streamyx failed! Turning off LAN switch'
+      python3 /home/heong/failover/Lanoff.py
+      sleep 15
+    fi
+  fi
+else
+  ping -c 4 -I eth0 8.8.4.4
+  if [ $? == 0 ]
+  then
+    previous_result=$(mosquitto_sub -h aspireF15.local -C 1 -t 'failover/messages')
+    if [ "$previous_result" == "ADSL failed" ]
+    then
+      notice=$(mosquitto_pub -h aspireF15.local -r -t 'failover/messages' -m 'ADSL restored')
+      date
+      echo "Streamyx is on and traceroute passed. raspibp started up"
+      echo "Turning on LAN switch"
+      mosquitto_pub -h aspireF15.local -t 'lightning/messages' -m 'Streamyx is back, turning on LAN switch'
+      python3 /home/heong/failover/Lanon.py
+      sleep 15
+    fi
+  else
+    echo "Streamyx still out"
+    previous_result=$(mosquitto_sub -h aspireF15.local -C 1 -t 'failover/messages')
+    if [ "$previous_result" == "ADSL restored" ]
+    then
+      notice=$(mosquitto_pub -h aspireF15.local -r -t 'failover/messages' -m 'ADSL failed')
+      date
+      echo "Streamyx out; switching off LAN switch to provoke Huawei failover"
+      mosquitto_pub -h aspireF15.local -t 'lightning/messages' -m 'Streamyx failed! Turning off LAN switch'
+      python3 /home/heong/failover/Lanoff.py
+      sleep 15
+    fi
+  fi
+fi
