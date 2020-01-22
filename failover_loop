@@ -1,0 +1,37 @@
+#!/bin/bash
+# xx.xx.xx.xx is the Huawei B310 IP and yy.yy.yy.yy is the  Archer D50
+# The Pi links to B310 via a WiFi USB dongle, and also plugs into copper
+# LAN of the Archer D50
+
+failover_off=0
+notice=$(mosquitto_pub -h aspireF15.local -r -t 'failover/messages' -m 'ADSL restored')
+while [ 1 ]
+do 
+  output=$(mosquitto_sub -h aspireF15.local -C 1 -t 'failover/commands')
+  if [ $output == 'failover_off' ]
+  then
+    if [ $failover_off -eq 0 ]
+    then
+      notice=$(mosquitto_pub -h aspireF15.local -t 'lightning/messages' -m 'Failover is now off')
+      echo "Turning failover off!"
+    fi
+    failover_off=1
+  elif [ $output == 'failover_on' ]
+  then
+    if [ $failover_off -eq 1 ]
+    then
+      mosquitto_pub -h aspireF15.local -t 'lightning/messages' -m 'Failover is now on as usual'
+      echo "Turning failover on - business as usual"
+    fi
+    failover_off=0
+  fi
+  if [ $failover_off -eq 0 ]
+  then
+    console_output=$(/home/heong/failover/failover-huawei)
+    echo $console_output
+  fi
+  echo "Sleeping 20s"
+  sleep 20
+  route add -host 8.8.8.8 gw yy.yy.yy.yy dev wlan0
+  route add -host 8.8.4.4 gw xx.xx.xx.xx dev eth0
+done
